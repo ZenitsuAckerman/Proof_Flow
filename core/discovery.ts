@@ -19,7 +19,12 @@ export class DiscoveryService {
     const requiredCapability = requiredCapabilityOverride || task.taskType;
 
     const allAgents = await db.listAgents();
-    const workerAgents = allAgents.filter(a => a.role.includes('WORKER'));
+    let workerAgents = allAgents.filter(a => a.role.includes('WORKER'));
+
+    // For legacy demo tasks (TASK-DEMO-1, TASK-DEMO-2), restrict candidate pool to original 4 seeded workers
+    if (taskId.startsWith('TASK-DEMO-')) {
+      workerAgents = workerAgents.filter(a => ['AGENT-WORKER-1', 'AGENT-WORKER-2', 'AGENT-WORKER-3', 'AGENT-WORKER-4'].includes(a.id));
+    }
 
     const candidateEvaluations: WorkerEligibility[] = [];
 

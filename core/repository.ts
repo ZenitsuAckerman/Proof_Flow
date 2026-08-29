@@ -1,5 +1,6 @@
 import { Agent, Task, Wallet, Escrow, Collateral, Transaction, BuyerBond, Settlement, FinancialTerms, Evidence, VerificationResult } from './types';
 import { seedAgents, seedTasks, seedWallets } from './mock-data';
+import { static75Registry } from './agent-registry';
 import crypto from 'crypto';
 
 /**
@@ -14,11 +15,13 @@ export interface ProofFlowRepository {
   // Wallets
   getWallet(id: string): Promise<Wallet | null>;
   getWalletByAgentId(agentId: string): Promise<Wallet | null>;
+  listWallets(): Promise<Wallet[]>;
   updateWalletBalances(id: string, availableDelta: number, lockedDelta: number): Promise<Wallet>;
 
   // Tasks
   getTask(id: string): Promise<Task | null>;
   listTasks(): Promise<Task[]>;
+  createTask(task: Task): Promise<Task>;
   updateTaskStatus(id: string, status: Task['status']): Promise<Task>;
   updateTaskFinancialTerms(taskId: string, terms: FinancialTerms): Promise<Task>;
   
@@ -84,31 +87,63 @@ export class InMemoryRepository implements ProofFlowRepository {
   }
 
   private seed() {
+    this.agents.clear();
+    this.wallets.clear();
+    this.tasks.clear();
+    this.escrows.clear();
+    this.collaterals.clear();
+    this.buyerBonds.clear();
+    this.evidences.clear();
+    this.verificationResults.clear();
+    this.settlements.clear();
+    this.transactions.clear();
+
     seedAgents.forEach(a => this.agents.set(a.id, { ...a }));
     seedWallets.forEach(w => this.wallets.set(w.id, { ...w }));
     seedTasks.forEach(t => this.tasks.set(t.id, { ...t }));
   }
 
   async getAgent(id: string): Promise<Agent | null> {
-    return this.agents.get(id) || null;
+    if (this.agents.has(id)) return this.agents.get(id)!;
+    const virtual = static75Registry.agents.find(a => a.id === id);
+    return virtual ? { ...virtual } : null;
   }
 
   async listAgents(): Promise<Agent[]> {
-    return Array.from(this.agents.values());
+    const coreAgents = Array.from(this.agents.values());
+    const existingIds = new Set(coreAgents.map(a => a.id));
+    const extraVirtual = static75Registry.agents.filter(a => !existingIds.has(a.id));
+    return [...coreAgents, ...extraVirtual];
   }
 
   async getWallet(id: string): Promise<Wallet | null> {
-    return this.wallets.get(id) || null;
+    if (this.wallets.has(id)) return this.wallets.get(id)!;
+    const virtual = static75Registry.wallets.find(w => w.id === id);
+    return virtual ? { ...virtual } : null;
   }
 
   async getWalletByAgentId(agentId: string): Promise<Wallet | null> {
     const w = Array.from(this.wallets.values()).find(w => w.agentId === agentId);
-    return w || null;
+    if (w) return w;
+    const virtual = static75Registry.wallets.find(w => w.agentId === agentId);
+    return virtual ? { ...virtual } : null;
+  }
+
+  async listWallets(): Promise<Wallet[]> {
+    return Array.from(this.wallets.values());
   }
 
   async updateWalletBalances(id: string, availableDelta: number, lockedDelta: number): Promise<Wallet> {
-    const wallet = this.wallets.get(id);
-    if (!wallet) throw new Error(`Wallet ${id} not found`);
+    let wallet = this.wallets.get(id);
+    if (!wallet) {
+      const virtual = static75Registry.wallets.find(w => w.id === id);
+      if (virtual) {
+        wallet = { ...virtual };
+        this.wallets.set(wallet.id, wallet);
+      } else {
+        throw new Error(`Wallet ${id} not found`);
+      }
+    }
     
     // Check against negative balance
     if (wallet.availableBalance + availableDelta < 0) {
@@ -127,6 +162,14 @@ export class InMemoryRepository implements ProofFlowRepository {
 
   async listTasks(): Promise<Task[]> {
     return Array.from(this.tasks.values());
+  }
+
+  async createTask(task: Task): Promise<Task> {
+    if (this.tasks.has(task.id)) {
+      throw new Error(`DUPLICATE_TASK_ID: Task with ID ${task.id} already exists`);
+    }
+    this.tasks.set(task.id, task);
+    return task;
   }
 
   async updateTaskStatus(id: string, status: Task['status']): Promise<Task> {

@@ -16,13 +16,13 @@ export class FinancialReconciliation {
    * Lists EVERY wallet/account in DB and calculates system total money.
    */
   static async getSystemLevelReport(): Promise<{ accounts: WalletAccountReport[]; systemTotal: number }> {
-    const agents = await db.listAgents();
+    const wallets = await db.listWallets();
     const accounts: WalletAccountReport[] = [];
     let systemTotal = 0;
 
-    for (const agent of agents) {
-      const wallet = await db.getWalletByAgentId(agent.id);
-      if (wallet) {
+    for (const wallet of wallets) {
+      const agent = await db.getAgent(wallet.agentId);
+      if (agent) {
         let accountType: WalletAccountReport['accountType'] = 'WORKER';
         if (agent.id === 'PROTOCOL-TREASURY') accountType = 'PROTOCOL_TREASURY';
         else if (agent.role.includes('BUYER')) accountType = 'BUYER';

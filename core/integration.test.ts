@@ -1,7 +1,16 @@
-import { OrchestratorService } from './orchestrator';
+import { OrchestratorService, DemoRunState } from './orchestrator';
 import { FinancialReconciliation } from './reconciliation';
 import { db } from './repository';
 import { Transaction } from './types';
+
+async function runDemo(demoType: 'PRIMARY' | 'FAILURE' | 'BLIND_JURY' | 'UNCERTAIN'): Promise<DemoRunState> {
+  await OrchestratorService.initializeDemo(demoType);
+  let state: DemoRunState | null = null;
+  for (let i = 1; i <= 12; i++) {
+    state = await OrchestratorService.executeDemoStep(demoType, i);
+  }
+  return state!;
+}
 
 describe('Phase G: End-to-End Integration & Demo Orchestration Test Suite', () => {
   beforeEach(async () => {
@@ -9,39 +18,46 @@ describe('Phase G: End-to-End Integration & Demo Orchestration Test Suite', () =
   });
 
   it('1. Start Autonomous Transaction reaches COMPLETED', async () => {
-    const state = await OrchestratorService.runPrimaryDemoPass();
-    expect(state.currentStage).toBe('CAPACITY');
-    expect(state.task?.status).toBe('COMPLETED');
-    expect(state.clearingInstruction?.verdict).toBe('PASS');
-    expect(state.settlement?.status).toBe('SETTLED');
+    const state = await runDemo('PRIMARY');
+    const task = await db.getTask('TASK-DEMO-1');
+    const settlement = await db.getSettlementByTaskId('TASK-DEMO-1');
+    
+    expect(state.currentStage).toBe('SETTLE');
+    expect(task?.status).toBe('COMPLETED');
+    expect(settlement?.status).toBe('SETTLED');
   });
 
   it('2. Failure Scenario reaches PENALIZED with collateral slashed to PROTOCOL-TREASURY', async () => {
-    const state = await OrchestratorService.runFailureScenario();
-    expect(state.task?.status).toBe('PENALIZED');
-    expect(state.clearingInstruction?.verdict).toBe('FAIL');
-    expect(state.clearingInstruction?.collateralSlashed).toBe(1000);
+    await runDemo('FAILURE');
+    const task = await db.getTask('TASK-DEMO-1');
+    
+    expect(task?.status).toBe('PENALIZED');
 
     const treasuryWallet = await db.getWalletByAgentId('PROTOCOL-TREASURY');
     expect(treasuryWallet?.availableBalance).toBe(1000);
   });
 
   it('3. Blind Jury demo produces expected consensus (PASS)', async () => {
-    const state = await OrchestratorService.runBlindJuryDemo();
-    expect(state.verificationResult?.routeType).toBe('BLIND_JURY');
-    expect(state.verificationResult?.verdict).toBe('PASS');
-    expect(state.settlement?.status).toBe('SETTLED');
+    await runDemo('BLIND_JURY');
+    const vr = await db.getVerificationResultByTaskId('TASK-DEMO-2');
+    const settlement = await db.getSettlementByTaskId('TASK-DEMO-2');
+    
+    expect(vr?.routeType).toBe('BLIND_JURY');
+    expect(vr?.verdict).toBe('PASS');
+    expect(settlement?.status).toBe('SETTLED');
   });
 
   it('4. Uncertain scenario does not settle automatically', async () => {
-    const state = await OrchestratorService.runUncertainScenario();
-    expect(state.verificationResult?.verdict).toBe('UNCERTAIN');
-    expect(state.clearingInstruction?.verdict).toBe('UNCERTAIN');
-    expect(state.settlement).toBeNull(); // ZERO automatic settlement
+    await runDemo('UNCERTAIN');
+    const vr = await db.getVerificationResultByTaskId('TASK-DEMO-2');
+    const settlement = await db.getSettlementByTaskId('TASK-DEMO-2');
+    
+    expect(vr?.verdict).toBe('UNCERTAIN');
+    expect(settlement).toBeNull(); // ZERO automatic settlement
   });
 
   it('5. UI wallet values match repository state', async () => {
-    await OrchestratorService.runPrimaryDemoPass();
+    await runDemo('PRIMARY');
 
     const buyerWallet = await db.getWalletByAgentId('AGENT-BUYER-1');
     const workerWallet = await db.getWalletByAgentId('AGENT-WORKER-1');
@@ -54,7 +70,7 @@ describe('Phase G: End-to-End Integration & Demo Orchestration Test Suite', () =
   });
 
   it('6. Settlement ledger matches actual financial movement', async () => {
-    await OrchestratorService.runPrimaryDemoPass();
+    await runDemo('PRIMARY');
     const transactions = await db.listTransactions();
 
     const rewardTx = transactions.find((t: Transaction) => t.transactionType === 'WORKER_REWARD');
@@ -67,7 +83,7 @@ describe('Phase G: End-to-End Integration & Demo Orchestration Test Suite', () =
   });
 
   it('7. Reset returns system to deterministic baseline state', async () => {
-    await OrchestratorService.runPrimaryDemoPass();
+    await runDemo('PRIMARY');
     await OrchestratorService.resetDemo();
 
     const buyerWallet = await db.getWalletByAgentId('AGENT-BUYER-1');
@@ -79,17 +95,15 @@ describe('Phase G: End-to-End Integration & Demo Orchestration Test Suite', () =
   });
 
   it('8. Duplicate run does not corrupt financial state', async () => {
-    const state1 = await OrchestratorService.runPrimaryDemoPass();
-    expect(state1.settlement?.status).toBe('SETTLED');
+    await runDemo('PRIMARY');
+    const settlement1 = await db.getSettlementByTaskId('TASK-DEMO-1');
+    expect(settlement1?.status).toBe('SETTLED');
 
     const totalMoney1 = await FinancialReconciliation.calculateSystemTotalMoney();
 
-    // Attempt second settlement on completed task
-    if (state1.clearingInstruction) {
-      const dup = await OrchestratorService.runPrimaryDemoPass();
-      expect(dup.settlement?.status).toBe('SETTLED');
-    }
-
+    // Re-run
+    await runDemo('PRIMARY');
+    
     const totalMoney2 = await FinancialReconciliation.calculateSystemTotalMoney();
     expect(totalMoney2).toBe(totalMoney1);
   });

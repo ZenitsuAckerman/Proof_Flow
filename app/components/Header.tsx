@@ -3,19 +3,17 @@
 import React, { useState } from 'react';
 
 interface HeaderProps {
-  systemStatus: string;
   isProcessing: boolean;
   onRunDemo: (demoType: 'PRIMARY' | 'FAILURE' | 'BLIND_JURY' | 'UNCERTAIN' | 'RESET') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  systemStatus,
   isProcessing,
   onRunDemo
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   
-  const statusColor = systemStatus === 'ONLINE' ? 'bg-[#1e8e3e]' : systemStatus === 'PROCESSING' ? 'bg-[#1a73e8] animate-pulse' : 'bg-[#f9ab00]';
+
 
   return (
     <header className="w-full bg-white border-b border-[#dadce0] sticky top-0 z-50">
@@ -29,21 +27,10 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
             <h1 className="text-[17px] font-semibold text-[#202124] tracking-tight">ProofFlow</h1>
           </div>
-          
-          <nav className="hidden md:flex items-center gap-6 text-[13px] font-medium text-[#5f6368]">
-            <span className="text-[#1a73e8] border-b-2 border-[#1a73e8] h-16 flex items-center">Overview</span>
-            <span className="hover:text-[#202124] cursor-pointer transition-colors h-16 flex items-center">Transactions</span>
-            <span className="hover:text-[#202124] cursor-pointer transition-colors h-16 flex items-center">Agents</span>
-            <span className="hover:text-[#202124] cursor-pointer transition-colors h-16 flex items-center">Ledger</span>
-          </nav>
         </div>
 
-        {/* Right: Status & Controls */}
+        {/* Right: Controls */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#f8f9fa] border border-[#dadce0]">
-            <div className={`w-2 h-2 rounded-full ${statusColor}`} />
-            <span className="text-[11px] font-medium text-[#5f6368] uppercase tracking-wider">{systemStatus}</span>
-          </div>
 
           <button
             onClick={() => onRunDemo('PRIMARY')}

@@ -6,12 +6,23 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "h0:x402": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" core/h0-x402-spike.ts",
+    "h2:live": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" core/h2-live-spike.ts",
+    "h3:live": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" core/h3-live-spike.ts",
+    "financial:trace": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" core/financial-trace-spike.ts",
+    "x402:check": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" core/x402-check.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.19.0",
+    "@x402/core": "^2.24.0",
+    "@x402/evm": "^2.24.0",
+    "@x402/fetch": "^2.24.0",
+    "dotenv": "^17.4.2",
     "next": "16.3.3",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "viem": "^2.56.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

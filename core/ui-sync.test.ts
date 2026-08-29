@@ -1,5 +1,15 @@
-import { runDemoAction, getAppStateAction } from '../app/actions';
+import { getAppStateAction, initializeDemoAction, executeDemoStepAction, resetDemoAction } from '../app/actions';
 import { db } from './repository';
+import { CanonicalAppState } from './types';
+
+async function runFullDemo(demoType: 'PRIMARY' | 'FAILURE' | 'BLIND_JURY' | 'UNCERTAIN'): Promise<CanonicalAppState> {
+  await initializeDemoAction(demoType);
+  let state: CanonicalAppState | null = null;
+  for (let i = 1; i <= 12; i++) {
+    state = await executeDemoStepAction(demoType, i);
+  }
+  return state!;
+}
 
 describe('UI State Synchronization & Canonical State Builder', () => {
   beforeEach(() => {
@@ -24,7 +34,7 @@ describe('UI State Synchronization & Canonical State Builder', () => {
   });
 
   it('PRIMARY: Canonical state shows full settlement and exact balances', async () => {
-    const state = await runDemoAction('PRIMARY');
+    const state = await runFullDemo('PRIMARY');
     
     expect(state.task?.status).toBe('COMPLETED');
     expect(state.verificationResult?.verdict).toBe('PASS');
@@ -47,8 +57,8 @@ describe('UI State Synchronization & Canonical State Builder', () => {
   });
 
   it('RESET: Canonical state returns exactly to seeded baseline', async () => {
-    await runDemoAction('PRIMARY');
-    const state = await runDemoAction('RESET');
+    await runFullDemo('PRIMARY');
+    const state = await resetDemoAction();
 
     expect(state.task?.status).toBe('CREATED');
     expect(state.escrow).toBeNull();
@@ -60,7 +70,7 @@ describe('UI State Synchronization & Canonical State Builder', () => {
   });
 
   it('FAILURE: Canonical state matches failed repo state', async () => {
-    const state = await runDemoAction('FAILURE');
+    const state = await runFullDemo('FAILURE');
     
     expect(state.task?.status).toBe('PENALIZED');
     expect(state.verificationResult?.verdict).toBe('FAIL');
@@ -81,7 +91,7 @@ describe('UI State Synchronization & Canonical State Builder', () => {
   });
 
   it('BLIND_JURY: Shows research task, 5 evaluators, proper settlement', async () => {
-    const state = await runDemoAction('BLIND_JURY');
+    const state = await runFullDemo('BLIND_JURY');
     
     expect(state.task?.id).toBe('TASK-DEMO-2');
     expect(state.task?.taskType).toBe('research');
@@ -92,7 +102,7 @@ describe('UI State Synchronization & Canonical State Builder', () => {
   });
 
   it('UNCERTAIN: Verification is UNCERTAIN, settlement NOT executed, wallets locked', async () => {
-    const state = await runDemoAction('UNCERTAIN');
+    const state = await runFullDemo('UNCERTAIN');
     
     expect(state.verificationResult?.verdict).toBe('UNCERTAIN');
     expect(state.settlement).toBeNull();
@@ -110,23 +120,39 @@ describe('UI State Synchronization & Canonical State Builder', () => {
   });
 
   it('Scenario isolation: Prevents state leaks between runs', async () => {
-    const s1 = await runDemoAction('PRIMARY');
+    const s1 = await runFullDemo('PRIMARY');
     expect(s1.task?.id).toBe('TASK-DEMO-1');
     expect(s1.settlement?.status).toBe('SETTLED');
 
-    await runDemoAction('RESET');
+    await resetDemoAction();
 
-    const s2 = await runDemoAction('BLIND_JURY');
+    const s2 = await runFullDemo('BLIND_JURY');
     expect(s2.task?.id).toBe('TASK-DEMO-2');
     expect(s2.transactions.every(t => t.taskId === 'TASK-DEMO-2')).toBe(true);
 
-    await runDemoAction('RESET');
+    await resetDemoAction();
 
-    const s3 = await runDemoAction('FAILURE');
+    const s3 = await runFullDemo('FAILURE');
     expect(s3.verificationResult?.verdict).toBe('FAIL');
     
     // Ensure no old transactions from previous scenarios exist
     const failureTxns = s3.transactions.filter(t => t.transactionType === 'WORKER_REWARD');
     expect(failureTxns.length).toBe(0); // Failures shouldn't have rewards
+  });
+  
+  it('Progressive Execution: Validates step-by-step state changes', async () => {
+    let state = await initializeDemoAction('PRIMARY');
+    expect(state.currentStepIndex).toBe(0);
+    
+    // Step 4: Escrow funding
+    state = await executeDemoStepAction('PRIMARY', 4);
+    expect(state.currentStepIndex).toBe(4);
+    expect(state.escrow).not.toBeNull();
+    expect(state.escrow?.amount).toBe(10000);
+    
+    // Step 5: Collateral funding
+    state = await executeDemoStepAction('PRIMARY', 5);
+    expect(state.collateral).not.toBeNull();
+    expect(state.collateral?.amount).toBe(1000);
   });
 });

@@ -4,11 +4,17 @@ export interface Agent {
   id: string;
   name: string;
   role: AgentRole[];
+  provider?: string;
+  executionAdapter?: string;
   capabilities: string[];
+  specializations?: string[];
   supportedTaskTypes?: string[];
   available?: boolean;
   reputationScore: number;
   riskScore: number;
+  calibrationScore?: number;
+  averageLatencyMs?: number;
+  basePrice?: number;
   economicCapacity: Record<string, number>;
   walletId: string;
   createdAt: string;
@@ -57,12 +63,25 @@ export interface FinancialTerms {
   verificationPolicy: VerificationPolicy;
 }
 
+export interface TaskArtifactInput {
+  id: string;
+  filename: string;
+  language: string;
+  codeContent: string;
+  hash: string;
+  sizeBytes: number;
+  uploadedAt: string;
+}
+
 export interface Task {
   id: string;
   buyerAgentId: string;
   title: string;
   description: string;
   taskType: string;
+  specialization?: string;
+  userPrompt?: string;
+  artifactInput?: TaskArtifactInput;
   budget: number;
   qualityThreshold: number;
   deadlineSeconds: number;
@@ -197,6 +216,53 @@ export interface Settlement {
   settledAt?: string;
 }
 
+export type ExternalPaymentStatus = 
+  | 'PAYMENT_PENDING' 
+  | 'PAYMENT_AUTHORIZED' 
+  | 'PAYMENT_SUBMITTED' 
+  | 'PAYMENT_CONFIRMED' 
+  | 'PAYMENT_FAILED' 
+  | 'PAYMENT_RECONCILIATION_FAILED';
+
+export interface PaymentInstruction {
+  taskId: string;
+  settlementInstructionId?: string;
+  payerAgentId: string;
+  payeeAgentId: string;
+  internalAmount: number;
+  internalDenomination: 'INR';
+  externalAmount: number;
+  externalAsset: string;
+  externalNetwork: string;
+  paymentRail: string;
+  paymentIdempotencyKey: string;
+  payerAddress: string;
+  payeeAddress: string;
+  status: ExternalPaymentStatus;
+  createdAt: string;
+}
+
+export interface PaymentReceipt {
+  paymentId: string;
+  taskId?: string;
+  payerAgentId?: string;
+  payeeAgentId?: string;
+  payer: string;
+  payee: string;
+  amount: number;
+  asset: string;
+  network: string;
+  transactionHash: string;
+  explorerUrl?: string;
+  status: 'CONFIRMED' | 'SIMULATED' | 'FAILED' | 'REJECTED';
+  timestamp: string;
+  isTestnet: boolean;
+  rail: string;
+  simulated?: boolean;
+  source?: 'REAL_X402' | 'SIMULATION';
+  reason?: string;
+}
+
 export interface Transaction {
   id: string;
   taskId: string;
@@ -291,6 +357,7 @@ export interface WalletViewItem extends Wallet {
 
 export interface CanonicalAppState {
   task: Task | null;
+  allTasks: Task[];
   agents: Agent[];
   wallets: WalletViewItem[];
   transactions: Transaction[];
@@ -301,6 +368,8 @@ export interface CanonicalAppState {
   clearingInstruction: SettlementInstruction | null;
   settlement: Settlement | null;
   evidence: Evidence | null;
+  paymentInstruction: PaymentInstruction | null;
+  paymentReceipt: PaymentReceipt | null;
   systemTotal: number;
   currentStage: string;
   currentStepIndex: number;
